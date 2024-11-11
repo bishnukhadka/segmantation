@@ -1,4 +1,8 @@
 from modeling.backbone import resnet, xception, drn, mobilenet
+"""
+TODO: implement capability of the code, to add pre-trained backbone from ImageNet
+"""
+
 
 def build_backbone(backbone, output_stride, BatchNorm):
     if backbone == 'resnet':

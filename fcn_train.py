@@ -91,7 +91,7 @@ class Trainer(object):
                 # print(self.optimizer.load_state_dict(checkpoint['optimizer']))
             self.best_pred = checkpoint['best_pred']
             print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.resume, checkpoint['epoch']))
+                .format(args.resume, checkpoint['epoch']))
 
         # Clear start epoch if fine-tuning
         if args.ft:

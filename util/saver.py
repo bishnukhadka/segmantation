@@ -8,7 +8,11 @@ class Saver(object):
 
     def __init__(self, args):
         self.args = args
-        self.directory = os.path.join('run', args.dataset, args.checkname)
+        # self.directory = os.path.join('run', args.dataset, args.checkname)
+        # run/train/project/name
+        self.directory = os.path.join('run', args.project, args.checkname )
+        self.best_model_path = None
+        
         self.runs = sorted(glob.glob(os.path.join(self.directory, 'experiment_*')))
         run_id = int(self.runs[-1].split('_')[-1]) + 1 if self.runs else 0
 
@@ -22,6 +26,18 @@ class Saver(object):
         torch.save(state, filename)
         if is_best:
             best_pred = state['best_pred']
+            # save best.pt
+            # model_name = "epoch"+str(state['epoch'])+"score"+formatted_pred+'.pt'
+            model_name = 'best.pt'
+            model_path = os.path.join(self.experiment_dir, 'weights')
+            if not os.path.exists(model_path):
+                os.makedirs(model_path)
+            model_path = os.path.join(model_path, model_name)
+            print(f'\n\n\n\n\n{type(state['state_dict_not_parallel'])}')
+            torch.save(state['state_dict_not_parallel'], model_path)
+            self.best_model_path = model_path
+
+
             with open(os.path.join(self.experiment_dir, 'best_pred.txt'), 'w') as f:
                 f.write(str(best_pred))
             if self.runs:
@@ -29,6 +45,7 @@ class Saver(object):
                 for run in self.runs:
                     run_id = run.split('_')[-1]
                     path = os.path.join(self.directory, 'experiment_{}'.format(str(run_id)), 'best_pred.txt')
+
                     if os.path.exists(path):
                         with open(path, 'r') as f:
                             miou = float(f.readline())
@@ -46,7 +63,7 @@ class Saver(object):
         log_file = open(logfile, 'w')
         p = OrderedDict()
         p['datset'] = self.args.dataset
-        p['backbone'] = self.args.backbone
+        p['backbone'] = self.args.backbone #need to add if it is resnet101 or other not just resnet
         p['out_stride'] = self.args.out_stride
         p['lr'] = self.args.lr
         p['lr_scheduler'] = self.args.lr_scheduler

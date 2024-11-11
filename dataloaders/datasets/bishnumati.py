@@ -83,11 +83,8 @@ class BishnumatiSegmentation(Dataset):
                 sample = {'image': _img, 'label': _target}
                 return self.transform_val(sample)
             elif split == 'test':
-
                 sample = {'image': _img, 'label': _target}
-                a = self.transform_test(sample)
-                a['image_name']= _image_id
-                return a
+                return self.transform_val(sample)
 
 
     def _make_img_gt_point_pair(self, index):

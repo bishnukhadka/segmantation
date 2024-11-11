@@ -14,6 +14,16 @@ from util.lr_scheduler import LR_Scheduler
 from util.saver import Saver
 from util.summaries import TensorboardSummary
 from util.metrics import Evaluator
+from pathlib import Path as PathlibPath
+
+# added for using paths for weights and datasets
+import sys
+FILE = PathlibPath(__file__).resolve()
+ROOT = FILE.parents[0]  # root directory
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))  # add ROOT to PATH
+ROOT = PathlibPath(os.path.relpath(ROOT, PathlibPath.cwd()))  # relative
+
 
 class Trainer(object):
     def __init__(self, args):
@@ -76,6 +86,9 @@ class Trainer(object):
             self.model = self.model.cuda()
 
         # Resuming checkpoint
+        '''
+        TODO: resume feature for pre-trained .pt model
+        '''
         self.best_pred = 0.0
         if args.resume is not None:
             if not os.path.isfile(args.resume):
@@ -90,11 +103,16 @@ class Trainer(object):
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
             self.best_pred = checkpoint['best_pred']
             print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.resume, checkpoint['epoch']))
+                .format(args.resume, checkpoint['epoch']))
 
         # Clear start epoch if fine-tuning
         if args.ft:
             args.start_epoch = 0
+
+        # for testing on test-set, loading best.pt
+        self.best_model_path=None
+
+
 
     def training(self, epoch):
         train_loss = 0.0
@@ -114,8 +132,6 @@ class Trainer(object):
             # print(f"inside train() funciton: image and target size::")
             # print(image.size(),target.size())
 
-
-
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
 
@@ -132,22 +148,21 @@ class Trainer(object):
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item()
-            tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
+            # tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
             self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
             
             """
             TODO: need to find the problem for some value of batchsize
             """
-
-
             # Show 10 * 3 inference results each epoch
             if i % (num_img_tr // 10) == 0:
                 global_step = i + num_img_tr * epoch
                 self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
-        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
-        print('Loss: %.3f' % train_loss)
+        # print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+        # print('Loss: %.3f' % train_loss)
+        return train_loss
 
         if self.args.no_val:
             # save checkpoint every epoch
@@ -159,7 +174,7 @@ class Trainer(object):
                 'best_pred': self.best_pred,
             }, is_best)
 
-
+            
     def validation(self, epoch):
         self.model.eval()
         self.evaluator.reset()
@@ -173,7 +188,7 @@ class Trainer(object):
                 output = self.model(image)
             loss = self.criterion(output, target)
             test_loss += loss.item()
-            tbar.set_description('Validation loss: %.3f' % (test_loss / (i + 1)))
+            tbar.set_description('Validation loss: %.3f' % (test_loss / (i + 1)))   # need to understand why this is added
             pred = output.data.cpu().numpy()
             target = target.cpu().numpy()
             pred = np.argmax(pred, axis=1)
@@ -197,14 +212,64 @@ class Trainer(object):
 
         new_pred = mIoU
         if new_pred > self.best_pred:
+            print(f'Score improved: {self.best_pred} --> {new_pred}')
             is_best = True
             self.best_pred = new_pred
             self.saver.save_checkpoint({
                 'epoch': epoch + 1,
-                'state_dict': self.model.module.state_dict(),
+                # 'state_dict': self.model.modules.state_dict(),
+                'state_dict_not_parallel': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
             }, is_best)
+
+    
+    def test(self):
+        # for testing the model should be the best.pt
+        model = DeepLab(num_classes=self.nclass,
+                        backbone=self.args.backbone,
+                        output_stride=self.args.out_stride,
+                        sync_bn=self.args.sync_bn,
+                        freeze_bn=self.args.freeze_bn) # not sure what freeze_bn does
+        model.load_state_dict(torch.load(self.saver.best_model_path, weights_only=True))
+
+        model.eval()
+        evaluator = Evaluator(self.nclass)
+        evaluator.reset()
+        tbar = tqdm(self.test_loader, desc='\r')
+        test_loss = 0.0
+        for i, sample in enumerate(tbar):
+            image, target = sample['image'], sample['label']
+            if self.args.cuda:
+                image, target = image.cuda(), target.cuda()
+            with torch.no_grad():
+                output = model(image)
+            loss = self.criterion(output, target)
+            test_loss += loss.item()
+            tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))   
+            pred = output.data.cpu().numpy()
+            target = target.cpu().numpy()
+            pred = np.argmax(pred, axis=1)
+            # Add batch sample into evaluator
+            evaluator.add_batch(target, pred)
+
+        # Fast test during the training 
+        '''
+        The above comment is here since, i copied from evaluation, 
+        don't know why this is fast. 
+        '''
+        Acc = evaluator.Pixel_Accuracy()
+        Acc_class = evaluator.Pixel_Accuracy_Class()
+        mIoU = evaluator.Mean_Intersection_over_Union()
+        FWIoU = evaluator.Frequency_Weighted_Intersection_over_Union()
+        self.writer.add_scalar('test/total_loss_epoch', test_loss)
+        self.writer.add_scalar('test/mIoU', mIoU)
+        self.writer.add_scalar('test/Acc', Acc)
+        self.writer.add_scalar('test/Acc_class', Acc_class)
+        self.writer.add_scalar('test/fwIoU', FWIoU)
+        print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
+        print('Loss: %.3f' % test_loss)
+
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
@@ -223,12 +288,12 @@ def main():
                         help='whether to use SBD dataset (default: True)')
     parser.add_argument('--workers', type=int, default=4,
                         metavar='N', help='dataloader threads')
-    parser.add_argument('--base-size', type=int, default=513,
+    parser.add_argument('--base-size', type=int, default=256,
                         help='base image size')
-    parser.add_argument('--crop-size', type=int, default=513,
+    parser.add_argument('--crop-size', type=int, default=256,
                         help='crop image size')
     parser.add_argument('--sync-bn', type=bool, default=None,
-                        help='whether to use sync bn (default: auto)')
+                        help='whether to use SynchronizedBatchNorm2d or BatchNorm2d (default: auto)')
     parser.add_argument('--freeze-bn', type=bool, default=False,
                         help='whether to freeze bn parameters (default: False)')
     parser.add_argument('--loss-type', type=str, default='ce',
@@ -273,13 +338,20 @@ def main():
     parser.add_argument('--checkname', type=str, default=None,
                         help='set the checkpoint name')
     # finetuning pre-trained models
+    """
+    Don't know what other reason was this used for so not using this right now
+    """
     parser.add_argument('--ft', action='store_true', default=False,
-                        help='finetuning on a different dataset')
+                        help='finetuning on a different dataset') 
+    parser.add_argument('--weights', type=str, default=None,
+                        help='path to the model weights.pt')
     # evaluation option
     parser.add_argument('--eval-interval', type=int, default=1,
                         help='evaluuation interval (default: 1)')
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='skip validation during training')
+    # experiment detail
+    parser.add_argument("--project", default='train',help="save to project/experiment_{}")
 
     args = parser.parse_args()
     print(args)
@@ -348,9 +420,15 @@ def main():
     print('Starting Epoch:', trainer.args.start_epoch)
     print('Total Epoches:', trainer.args.epochs)
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
-        trainer.training(epoch)
+        print('\n\nTraining:')
+        train_loss = trainer.training(epoch)
+        print('Train Loss: %.3f' % train_loss)
         if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
+    
+    # test-set evaluation
+    print('Testing:')
+    trainer.test()
 
     trainer.writer.close()
 
