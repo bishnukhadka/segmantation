@@ -30,6 +30,11 @@ class Trainer(object):
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
+        # # checking the size of the image tensor
+        # print("\n\n\n\nSize of 1 dataloader tensor instance:")
+        # print(next(iter(self.train_loader))['label'].shape)
+        # print("\n\n\n\n")
+
         # Define network
         model = DeepLab(num_classes=self.nclass,
                         backbone=args.backbone,
@@ -98,10 +103,22 @@ class Trainer(object):
         num_img_tr = len(self.train_loader)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
+            
 
+            # print(f"inside train() funciton: image and target size::")
             # print(image.size(),target.size())
+
+            # print(f"inside train function: change the shape of the target tensor")
+            # target = torch.unsqueeze(target, dim=1)
+
+            # print(f"inside train() funciton: image and target size::")
+            # print(image.size(),target.size())
+
+
+
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
+
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             output = self.model(image)
@@ -117,6 +134,11 @@ class Trainer(object):
             train_loss += loss.item()
             tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
             self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
+            
+            """
+            TODO: need to find the problem for some value of batchsize
+            """
+
 
             # Show 10 * 3 inference results each epoch
             if i % (num_img_tr // 10) == 0:
@@ -151,7 +173,7 @@ class Trainer(object):
                 output = self.model(image)
             loss = self.criterion(output, target)
             test_loss += loss.item()
-            tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
+            tbar.set_description('Validation loss: %.3f' % (test_loss / (i + 1)))
             pred = output.data.cpu().numpy()
             target = target.cpu().numpy()
             pred = np.argmax(pred, axis=1)
@@ -189,10 +211,13 @@ def main():
     parser.add_argument('--backbone', type=str, default='resnet',
                         choices=['resnet', 'xception', 'drn', 'mobilenet'],
                         help='backbone name (default: resnet)')
-    parser.add_argument('--out-stride', type=int, default=16,
+    parser.add_argument('--out_stride', type=int, default=16,
                         help='network output stride (default: 8)')
+    """
+    TODO: dataset arg should input the dataset path, not be hard-coded to certain datasets.  
+    """
     parser.add_argument('--dataset', type=str, default='china_xrays_dataset',
-                        choices=['pascal', 'coco', 'cityscapes','darwinlungs','u4_dataset','u5_dataset','china_xrays_dataset','japan_xrays_dataset','montgomery_xrays_dataset','nih_xrays_dataset'],
+                        choices=['bishnumati', 'bagmati', 'pascal', 'coco', 'cityscapes','darwinlungs','u4_dataset','u5_dataset','china_xrays_dataset','japan_xrays_dataset','montgomery_xrays_dataset','nih_xrays_dataset'],
                         help='dataset name (default: pascal)')
     parser.add_argument('--use-sbd', action='store_true', default=False,
                         help='whether to use SBD dataset (default: True)')
@@ -274,6 +299,8 @@ def main():
     # default settings for epochs, batch_size and lr
     if args.epochs is None:
         epoches = {
+            'bishnumati':300,
+            'bagmati':300,
             'coco': 30,
             'cityscapes': 200,
             'pascal': 50,
@@ -296,10 +323,12 @@ def main():
 
     if args.lr is None:
         lrs = {
+            'bishnumati':0.01, 
+            'bagmati': 0.01,
             'coco': 0.1,
             'cityscapes': 0.01,
             'pascal': 0.007,
-            # larning rate 
+            # learning rate 
             'darwinlungs' : 0.01,
             'u4_dataset' : 0.01,
             'u5_dataset':0.01,
@@ -307,7 +336,6 @@ def main():
             'japan_xrays_dataset':0.01,
             'montgomery_xrays_dataset':0.01,
             'nih_xrays_dataset':0.01,
-
         }
         args.lr = lrs[args.dataset.lower()] / (4 * len(args.gpu_ids)) * args.batch_size
 
@@ -327,4 +355,4 @@ def main():
     trainer.writer.close()
 
 if __name__ == "__main__":
-   main()
+    main()

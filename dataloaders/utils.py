@@ -21,7 +21,12 @@ def decode_segmap(label_mask, dataset, plot=False):
     Returns:
         (np.ndarray, optional): the resulting decoded color image.
     """
-    if dataset == 'pascal' or dataset == 'coco':
+    if dataset == 'bishnumati' or dataset == 'bagmati':
+        n_classes = 2
+        label_colours = get_darwin_lungs_labels()
+
+
+    elif dataset == 'pascal' or dataset == 'coco':
         n_classes = 21
         label_colours = get_pascal_labels()
     elif dataset == 'cityscapes':
