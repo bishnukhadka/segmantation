@@ -16,6 +16,16 @@ from util.summaries import TensorboardSummary
 from util.metrics import Evaluator
 from pathlib import Path as PathlibPath
 
+# added GLOBAL for best.pt model loading for testing
+from modeling.backbone import resnet, xception, drn, mobilenet
+from torch.nn.modules.conv import Conv2d
+from torch.nn.modules.batchnorm import BatchNorm2d
+from torch.nn.modules.activation import ReLU
+from torch.nn.modules.pooling import MaxPool2d, AdaptiveAvgPool2d
+from torch.nn.modules.container import Sequential
+from modeling.aspp import ASPP, _ASPPModule
+from modeling.decoder import Decoder
+
 # added for using paths for weights and datasets
 import sys
 FILE = PathlibPath(__file__).resolve()
@@ -110,7 +120,7 @@ class Trainer(object):
             args.start_epoch = 0
 
         # for testing on test-set, loading best.pt
-        self.best_model_path=None
+        self.best_model=None
 
 
 
@@ -162,7 +172,6 @@ class Trainer(object):
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         # print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         # print('Loss: %.3f' % train_loss)
-        return train_loss
 
         if self.args.no_val:
             # save checkpoint every epoch
@@ -173,6 +182,8 @@ class Trainer(object):
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
             }, is_best)
+
+        return train_loss
 
             
     def validation(self, epoch):
@@ -215,24 +226,48 @@ class Trainer(object):
             print(f'Score improved: {self.best_pred} --> {new_pred}')
             is_best = True
             self.best_pred = new_pred
+            self.best_model = self.model
+            self.saver.best_model = self.best_model
             self.saver.save_checkpoint({
                 'epoch': epoch + 1,
-                # 'state_dict': self.model.modules.state_dict(),
-                'state_dict_not_parallel': self.model.state_dict(),
+                # 'state_dict': self.model.modules.state_dict(), # for training with parallel GPU's
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
             }, is_best)
-
     
-    def test(self):
+    def test(self, model_path=None):
+        # Allowlist the DeepLab class for safe loading
+        torch.serialization.add_safe_globals(
+            [set, 
+            DeepLab, 
+            resnet.ResNet, 
+            MaxPool2d, AdaptiveAvgPool2d,
+            Conv2d, 
+            BatchNorm2d, 
+            ReLU,
+            Sequential,
+            resnet.Bottleneck,
+            ASPP, _ASPPModule,
+            Decoder,
+            torch.nn.modules.dropout.Dropout
+        ])
+
         # for testing the model should be the best.pt
         model = DeepLab(num_classes=self.nclass,
                         backbone=self.args.backbone,
                         output_stride=self.args.out_stride,
                         sync_bn=self.args.sync_bn,
-                        freeze_bn=self.args.freeze_bn) # not sure what freeze_bn does
-        model.load_state_dict(torch.load(self.saver.best_model_path, weights_only=True))
+                        freeze_bn=self.args.freeze_bn) # freezes the BatchNorm layers, meaning they won’t update their running mean and variance during evaluation.
 
+        if not model_path:
+            print(self.saver.best_model_path)
+            model_path = PathlibPath(self.saver.best_model_path)
+            model = torch.load(self.saver.best_model_path, weights_only=True)
+            if torch.cuda.device_count() > 1:
+                model = torch.nn.DataParallel(model)
+        else:
+            model.load_state_dict(torch.load(model_path, weights_only=True))
+        
         model.eval()
         evaluator = Evaluator(self.nclass)
         evaluator.reset()

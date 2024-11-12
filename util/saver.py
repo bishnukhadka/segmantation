@@ -11,7 +11,8 @@ class Saver(object):
         # self.directory = os.path.join('run', args.dataset, args.checkname)
         # run/train/project/name
         self.directory = os.path.join('run', args.project, args.checkname )
-        self.best_model_path = None
+        self.best_model = None
+        self.best_model_path=None
         
         self.runs = sorted(glob.glob(os.path.join(self.directory, 'experiment_*')))
         run_id = int(self.runs[-1].split('_')[-1]) + 1 if self.runs else 0
@@ -33,9 +34,13 @@ class Saver(object):
             if not os.path.exists(model_path):
                 os.makedirs(model_path)
             model_path = os.path.join(model_path, model_name)
-            print(f'\n\n\n\n\n{type(state['state_dict_not_parallel'])}')
-            torch.save(state['state_dict_not_parallel'], model_path)
-            self.best_model_path = model_path
+            if self.best_model:
+                # Save only the underlying model to avoid pickling issues with DataParallel
+                # If self.best_model is wrapped in DataParallel, save self.best_model.module instead
+                torch.save(self.best_model.module if isinstance(self.best_model, torch.nn.DataParallel) else self.best_model, model_path)
+                self.best_model_path = model_path
+            else: 
+                print("Model couldn't be saved due to self.best_model being None")
 
 
             with open(os.path.join(self.experiment_dir, 'best_pred.txt'), 'w') as f:
