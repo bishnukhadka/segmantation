@@ -11,7 +11,7 @@ class Bottleneck(nn.Module):
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = BatchNorm(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
-                               dilation=dilation, padding=dilation, bias=False)
+                            dilation=dilation, padding=dilation, bias=False)
         self.bn2 = BatchNorm(planes)
         self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
         self.bn3 = BatchNorm(planes * 4)
@@ -79,7 +79,7 @@ class ResNet(nn.Module):
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
                 nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
+                        kernel_size=1, stride=stride, bias=False),
                 BatchNorm(planes * block.expansion),
             )
 
@@ -96,7 +96,7 @@ class ResNet(nn.Module):
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
                 nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
+                        kernel_size=1, stride=stride, bias=False),
                 BatchNorm(planes * block.expansion),
             )
 

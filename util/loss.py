@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from collections import OrderedDict
 
 class SegmentationLosses(object):
     def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, cuda=False):
@@ -19,7 +20,11 @@ class SegmentationLosses(object):
             raise NotImplementedError
 
     def CrossEntropyLoss(self, logit, target):
+        # if isinstance(logit, OrderedDict):
+        #     logit = logit['out']
+        
         n, c, h, w = logit.size()
+            
         criterion = nn.CrossEntropyLoss(weight=self.weight, ignore_index=self.ignore_index,
                                         size_average=self.size_average)
         if self.cuda:

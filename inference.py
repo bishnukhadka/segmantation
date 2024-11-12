@@ -23,8 +23,6 @@ def save_output_images(LOAD_PATH_MODEL, model, test_loader, SAVE_PATH_MODEL_OUTP
         LOAD_PATH_MODEL: Path where model weights are saved
         test_loader: dataloader
         SAVE_PATH_MODEL_OUTPUT: save path for segmentation outputs
-
-       
     '''
     
     model = torch.nn.DataParallel(model, device_ids=[0])

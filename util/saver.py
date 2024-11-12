@@ -8,7 +8,12 @@ class Saver(object):
 
     def __init__(self, args):
         self.args = args
-        self.directory = os.path.join('run', args.dataset, args.checkname)
+        # self.directory = os.path.join('run', args.dataset, args.checkname)
+        # run/train/name
+        self.directory = os.path.join('run', args.project, args.model+"-"+args.backbone )
+        self.best_model = None
+        self.best_model_path=None
+        
         self.runs = sorted(glob.glob(os.path.join(self.directory, 'experiment_*')))
         run_id = int(self.runs[-1].split('_')[-1]) + 1 if self.runs else 0
 
@@ -22,6 +27,23 @@ class Saver(object):
         torch.save(state, filename)
         if is_best:
             best_pred = state['best_pred']
+            # save best.pt
+            # model_name = "epoch"+str(state['epoch'])+"score"+formatted_pred+'.pt'
+            model_name = 'best.pt'
+            model_path = os.path.join(self.experiment_dir, 'weights')
+            if not os.path.exists(model_path):
+                os.makedirs(model_path)
+            model_path = os.path.join(model_path, model_name)
+            if self.best_model:
+                # Save only the underlying model to avoid pickling issues with DataParallel
+                # If self.best_model is wrapped in DataParallel, save self.best_model.module instead
+                torch.save(self.best_model.module if isinstance(self.best_model, torch.nn.DataParallel) else self.best_model, model_path)
+                self.best_model_path = model_path
+                print(f"Saved at: {self.best_model_path}")
+            else: 
+                print("Model couldn't be saved due to self.best_model being None")
+
+
             with open(os.path.join(self.experiment_dir, 'best_pred.txt'), 'w') as f:
                 f.write(str(best_pred))
             if self.runs:
@@ -29,6 +51,7 @@ class Saver(object):
                 for run in self.runs:
                     run_id = run.split('_')[-1]
                     path = os.path.join(self.directory, 'experiment_{}'.format(str(run_id)), 'best_pred.txt')
+
                     if os.path.exists(path):
                         with open(path, 'r') as f:
                             miou = float(f.readline())
@@ -46,13 +69,13 @@ class Saver(object):
         log_file = open(logfile, 'w')
         p = OrderedDict()
         p['datset'] = self.args.dataset
-        p['backbone'] = self.args.backbone
+        p['backbone'] = self.args.backbone #need to add if it is resnet101 or other not just resnet
         p['out_stride'] = self.args.out_stride
         p['lr'] = self.args.lr
         p['lr_scheduler'] = self.args.lr_scheduler
         p['loss_type'] = self.args.loss_type
         p['epoch'] = self.args.epochs
-        p['base_size'] = self.args.base_size
+        p['img'] = self.args.img
         p['crop_size'] = self.args.crop_size
 
         for key, val in p.items():

@@ -3,6 +3,13 @@ class Path(object):
     def db_root_dir(dataset):
         if dataset == 'pascal':
             return 'E:/Data/pascal/'  # folder that contains VOCdevkit/.
+        
+        elif dataset == "bishnumati":
+            return "C:/Users/aires/Documents/Projects/Datasets/bishnumati_dataset_IS"
+        
+        elif dataset == "bishnumati":
+            return "C:/Users/aires/Documents/Projects/Datasets/bagmati_dataset_IS"
+
         elif dataset == 'sbd':
             return '/path/to/datasets/benchmark_RELEASE/'  # folder that contains dataset/.
         elif dataset == 'cityscapes':
