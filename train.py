@@ -25,8 +25,15 @@ from torch.nn.modules.pooling import MaxPool2d, AdaptiveAvgPool2d
 from torch.nn.modules.container import Sequential
 from modeling.aspp import ASPP, _ASPPModule
 from modeling.decoder import Decoder
+from modeling.fcn import *
+from torchvision.models.segmentation.fcn import FCN, FCNHead
+from torchvision.models._utils import IntermediateLayerGetter
+from torchvision.models.resnet import Bottleneck
 
 # added for using paths for weights and datasets
+'''
+has not been used yet
+'''
 import sys
 FILE = PathlibPath(__file__).resolve()
 ROOT = FILE.parents[0]  # root directory
@@ -50,24 +57,31 @@ class Trainer(object):
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
-        # # checking the size of the image tensor
-        # print("\n\n\n\nSize of 1 dataloader tensor instance:")
-        # print(next(iter(self.train_loader))['label'].shape)
-        # print("\n\n\n\n")
+        if args.model=='deeplabv3+':
+            # Define network
+            model = DeepLab(num_classes=self.nclass,
+                            backbone=args.backbone,
+                            output_stride=args.out_stride,
+                            sync_bn=args.sync_bn,
+                            freeze_bn=args.freeze_bn)
 
-        # Define network
-        model = DeepLab(num_classes=self.nclass,
-                        backbone=args.backbone,
-                        output_stride=args.out_stride,
-                        sync_bn=args.sync_bn,
-                        freeze_bn=args.freeze_bn)
+            train_params = [{'params': model.get_1x_lr_params(), 
+                            'lr': args.lr},
+                            {'params': model.get_10x_lr_params(),
+                            'lr': args.lr * 10}]   
+        else: 
+            # assert that the backbone is resnet
+            assert args.backbone=='resnet', "FCN only supports resnet backbone(currently using ResNet101)"
+            model = FCNResNet101(self.nclass, 512)
 
-        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
-                        {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
+            train_params = [{'params': model.parameters(), 
+                        'lr': args.lr}]
 
         # Define Optimizer
-        optimizer = torch.optim.SGD(train_params, momentum=args.momentum,
-                                    weight_decay=args.weight_decay, nesterov=args.nesterov)
+        optimizer = torch.optim.SGD(train_params, 
+                                    momentum=args.momentum,
+                                    weight_decay=args.weight_decay, 
+                                    nesterov=args.nesterov)
 
         # Define Criterion
         # whether to use class balanced weights
@@ -80,18 +94,25 @@ class Trainer(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
+        self.criterion = SegmentationLosses(
+            weight=weight, 
+            cuda=args.cuda).build_loss(mode=args.loss_type)
         self.model, self.optimizer = model, optimizer
         
         # Define Evaluator
         self.evaluator = Evaluator(self.nclass)
         # Define lr scheduler
-        self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
-                                            args.epochs, len(self.train_loader))
+        self.scheduler = LR_Scheduler(
+            args.lr_scheduler, 
+            args.lr,
+            args.epochs, 
+            len(self.train_loader))
 
         # Using cuda
         if args.cuda:
-            self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+            self.model = torch.nn.DataParallel(
+                self.model, 
+                device_ids=self.args.gpu_ids)
             patch_replication_callback(self.model)
             self.model = self.model.cuda()
 
@@ -122,8 +143,6 @@ class Trainer(object):
         # for testing on test-set, loading best.pt
         self.best_model=None
 
-
-
     def training(self, epoch):
         train_loss = 0.0
         self.model.train()
@@ -131,10 +150,6 @@ class Trainer(object):
         num_img_tr = len(self.train_loader)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
-            
-
-            # print(f"inside train() funciton: image and target size::")
-            # print(image.size(),target.size())
 
             # print(f"inside train function: change the shape of the target tensor")
             # target = torch.unsqueeze(target, dim=1)
@@ -148,17 +163,18 @@ class Trainer(object):
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             output = self.model(image)
-
-            # new = np.array(output)
-            # print('Output',output.size(),torch.unique(output))
-            # print('Target',target.size(),torch.unique(target))
-            # print(torch.unique(output))
+            
+            """
+            Output of the FCN comes out as 
+            """
+            if self.args.model=='fcn':
+                output = output['out']
 
             loss = self.criterion(output, target)
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item()
-            # tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
+            tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
             self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
             
             """
@@ -197,6 +213,8 @@ class Trainer(object):
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
                 output = self.model(image)
+                if self.args.model=='fcn':
+                    output=output['out']
             loss = self.criterion(output, target)
             test_loss += loss.item()
             tbar.set_description('Validation loss: %.3f' % (test_loss / (i + 1)))   # need to understand why this is added
@@ -249,15 +267,19 @@ class Trainer(object):
             resnet.Bottleneck,
             ASPP, _ASPPModule,
             Decoder,
-            torch.nn.modules.dropout.Dropout
+            torch.nn.modules.dropout.Dropout,
+            FCNResNet101, FCN, FCNHead, IntermediateLayerGetter, Bottleneck # for FCN
         ])
 
-        # for testing the model should be the best.pt
-        model = DeepLab(num_classes=self.nclass,
+        if self.args.model=='deeplabv3+':
+            # for testing the model should be the best.pt
+            model = DeepLab(num_classes=self.nclass,
                         backbone=self.args.backbone,
                         output_stride=self.args.out_stride,
                         sync_bn=self.args.sync_bn,
                         freeze_bn=self.args.freeze_bn) # freezes the BatchNorm layers, meaning they won’t update their running mean and variance during evaluation.
+        else: 
+            model = FCNResNet101(self.nclass, 512)
 
         if not model_path:
             print(self.saver.best_model_path)
@@ -279,6 +301,8 @@ class Trainer(object):
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
                 output = model(image)
+                if self.args.model=='fcn':
+                    output=output['out']
             loss = self.criterion(output, target)
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))   
@@ -308,6 +332,8 @@ class Trainer(object):
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
+    parser.add_argument('--model', type=str, default='deeplabv3+',
+                        choices=['deeplabv3+','fcn'])
     parser.add_argument('--backbone', type=str, default='resnet',
                         choices=['resnet', 'xception', 'drn', 'mobilenet'],
                         help='backbone name (default: resnet)')
@@ -323,9 +349,9 @@ def main():
                         help='whether to use SBD dataset (default: True)')
     parser.add_argument('--workers', type=int, default=4,
                         metavar='N', help='dataloader threads')
-    parser.add_argument('--base-size', type=int, default=256,
+    parser.add_argument('--img', type=int, default=256,
                         help='base image size')
-    parser.add_argument('--crop-size', type=int, default=256,
+    parser.add_argument('--crop_size', type=int, default=256,
                         help='crop image size')
     parser.add_argument('--sync-bn', type=bool, default=None,
                         help='whether to use SynchronizedBatchNorm2d or BatchNorm2d (default: auto)')

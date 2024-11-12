@@ -15,10 +15,10 @@ class BishnumatiSegmentation(Dataset):
     NUM_CLASSES = 2
 
     def __init__(self,
-                 args,
-                 base_dir=Path.db_root_dir('bishnumati'),
-                 split='train',
-                 ):
+                args,
+                base_dir=Path.db_root_dir('bishnumati'),
+                split='train',
+                ):
         """
         :param base_dir: path to bishnumati dataset directory
         :param split: train/val
@@ -63,7 +63,6 @@ class BishnumatiSegmentation(Dataset):
                 self.categories.append(_cat)
             
         assert (len(self.images) == len(self.categories))
- 
 
         # Display stats
         print('Number of images in {}: {:d}'.format(split, len(self.images)))
@@ -92,14 +91,13 @@ class BishnumatiSegmentation(Dataset):
         _target = Image.open(self.categories[index])
         
         _image_id = self.im_ids[index]
-     
         return _img, _target,_image_id
 
 
     def transform_tr(self, sample):
         composed_transforms = transforms.Compose([
             tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=self.args.base_size, crop_size=self.args.crop_size),
+            tr.RandomScaleCrop(base_size=self.args.img, crop_size=self.args.crop_size),
             tr.RandomGaussianBlur(),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
