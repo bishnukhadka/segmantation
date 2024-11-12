@@ -30,6 +30,24 @@ from torchvision.models.segmentation.fcn import FCN, FCNHead
 from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.resnet import Bottleneck
 
+# Allowlist the DeepLab class for safe loading
+torch.serialization.add_safe_globals(
+    [set, 
+    DeepLab, 
+    resnet.ResNet, 
+    MaxPool2d, AdaptiveAvgPool2d,
+    Conv2d, 
+    BatchNorm2d, 
+    ReLU,
+    Sequential,
+    resnet.Bottleneck,
+    ASPP, _ASPPModule,
+    Decoder,
+    torch.nn.modules.dropout.Dropout,
+    FCNResNet101, FCN, FCNHead, IntermediateLayerGetter, Bottleneck # for FCN
+])
+
+
 # added for using paths for weights and datasets
 '''
 has not been used yet
@@ -76,7 +94,23 @@ class Trainer(object):
 
             train_params = [{'params': model.parameters(), 
                         'lr': args.lr}]
-
+            
+        # weights
+        if self.args.weights:
+            weights=PathlibPath(self.args.weights)
+            # assert that weights is a valid path
+            assert os.path.exists(weights)
+            # print to inform of loading the weights
+            print(f'Loading weights: model: {self.args.model}, backbone: {self.args.backbone}')
+            try:
+                # Attempt to load the model weights
+                model = torch.load(weights, weights_only=True)
+            except Exception as e:
+                # If an exception occurs, print the error and raise an AssertionError or handle it as needed
+                print(f"Error occurred while loading weights: {e}")
+                raise AssertionError("Weights loading failed!") 
+            print('Successfully loaded weights.\n')
+        
         # Define Optimizer
         optimizer = torch.optim.SGD(train_params, 
                                     momentum=args.momentum,
@@ -254,23 +288,6 @@ class Trainer(object):
             }, is_best)
     
     def test(self, model_path=None):
-        # Allowlist the DeepLab class for safe loading
-        torch.serialization.add_safe_globals(
-            [set, 
-            DeepLab, 
-            resnet.ResNet, 
-            MaxPool2d, AdaptiveAvgPool2d,
-            Conv2d, 
-            BatchNorm2d, 
-            ReLU,
-            Sequential,
-            resnet.Bottleneck,
-            ASPP, _ASPPModule,
-            Decoder,
-            torch.nn.modules.dropout.Dropout,
-            FCNResNet101, FCN, FCNHead, IntermediateLayerGetter, Bottleneck # for FCN
-        ])
-
         if self.args.model=='deeplabv3+':
             # for testing the model should be the best.pt
             model = DeepLab(num_classes=self.nclass,
@@ -281,15 +298,15 @@ class Trainer(object):
         else: 
             model = FCNResNet101(self.nclass, 512)
 
-        if not model_path:
-            print(self.saver.best_model_path)
+        if not model_path: #if weights is given
+            # print(self.saver.best_model_path)
             model_path = PathlibPath(self.saver.best_model_path)
             model = torch.load(self.saver.best_model_path, weights_only=True)
             if torch.cuda.device_count() > 1:
                 model = torch.nn.DataParallel(model)
         else:
-            model.load_state_dict(torch.load(model_path, weights_only=True))
-        
+            # model.load_state_dict(torch.load(model_path, weights_only=True))
+            torch.load(model_path, weights_only=True)
         model.eval()
         evaluator = Evaluator(self.nclass)
         evaluator.reset()
@@ -403,7 +420,7 @@ def main():
     Don't know what other reason was this used for so not using this right now
     """
     parser.add_argument('--ft', action='store_true', default=False,
-                        help='finetuning on a different dataset') 
+                        help='finetuning on a different dataset')
     parser.add_argument('--weights', type=str, default=None,
                         help='path to the model weights.pt')
     # evaluation option
@@ -488,7 +505,7 @@ def main():
             trainer.validation(epoch)
     
     # test-set evaluation
-    print('Testing:')
+    print('\n\nTesting:')
     trainer.test()
 
     trainer.writer.close()

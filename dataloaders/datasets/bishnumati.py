@@ -7,11 +7,7 @@ from mypath import Path
 from torchvision import transforms
 from dataloaders import custom_transforms as tr
 
-
 class BishnumatiSegmentation(Dataset):
-    """
-    Darwin dataset
-    """
     NUM_CLASSES = 2
 
     def __init__(self,

@@ -9,8 +9,8 @@ class Saver(object):
     def __init__(self, args):
         self.args = args
         # self.directory = os.path.join('run', args.dataset, args.checkname)
-        # run/train/project/name
-        self.directory = os.path.join('run', args.project, args.checkname )
+        # run/train/name
+        self.directory = os.path.join('run', args.project, args.model+"-"+args.backbone )
         self.best_model = None
         self.best_model_path=None
         
@@ -39,6 +39,7 @@ class Saver(object):
                 # If self.best_model is wrapped in DataParallel, save self.best_model.module instead
                 torch.save(self.best_model.module if isinstance(self.best_model, torch.nn.DataParallel) else self.best_model, model_path)
                 self.best_model_path = model_path
+                print(f"Saved at: {self.best_model_path}")
             else: 
                 print("Model couldn't be saved due to self.best_model being None")
 
