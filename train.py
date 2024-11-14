@@ -143,7 +143,6 @@ class Trainer(object):
             col_width=20,
             row_settings=["var_names"]
         ))
-        exit()
         
         # Define Optimizer
         optimizer = torch.optim.SGD(train_params,
@@ -249,10 +248,11 @@ class Trainer(object):
             TODO: need to find the problem for some value of batchsize
             """
             # Show 10 * 3 inference results each epoch
-            if i % (num_img_tr // 10) == 0:
-                global_step = i + num_img_tr * epoch
-                self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
+            # if i % (num_img_tr // 10) == 0:
+            #     global_step = i + num_img_tr * epoch
+            #     self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
 
+            
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         # print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         # print('Loss: %.3f' % train_loss)
@@ -316,7 +316,7 @@ class Trainer(object):
             self.saver.best_model = self.best_model
             self.saver.save_checkpoint({
                 'epoch': epoch + 1,
-                # 'state_dict': self.model.modules.state_dict(), # for training with parallel GPU's
+                'state_dict': self.model.modules.state_dict(), # for training with parallel GPU's
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
             }, is_best)
@@ -457,7 +457,7 @@ def main():
                         help='finetuning on a different dataset')
     parser.add_argument('--weights', type=str, default=None,
                         help='path to the model weights.pt')
-    parser.add_argument('--freeze', type=str, default='None', choices=['encoder', 'decoder'],
+    parser.add_argument('--freeze', type=str, default=None, choices=['encoder', 'decoder'],
     help='choose encode or decoder')
     # evaluation option
     parser.add_argument('--eval-interval', type=int, default=1,
@@ -485,8 +485,8 @@ def main():
     # default settings for epochs, batch_size and lr
     if args.epochs is None:
         epoches = {
-            'bishnumati':300,
-            'bagmati':300,
+            'bishnumati':100,
+            'bagmati':100,
             'coco': 30,
             'cityscapes': 200,
             'pascal': 50,
