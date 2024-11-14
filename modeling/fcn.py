@@ -2,10 +2,10 @@ import torch
 from torchvision.models.segmentation import fcn_resnet101
 
 class FCNResNet101(torch.nn.Module):
-    def __init__(self, num_classes,size):
+    def __init__(self, num_classes,size, pretrained=False):
         super(FCNResNet101, self).__init__()
         # Load the pre-trained fcn_resnet101 model
-        self.model = fcn_resnet101(pretrained=True)
+        self.model = fcn_resnet101(pretrained=pretrained)
         
         # Replace the final classifier to match the number of classes
         self.model.classifier[4] = torch.nn.Conv2d(size, num_classes, kernel_size=(1, 1), stride=(1, 1))

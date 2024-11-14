@@ -46,7 +46,7 @@ torch.serialization.add_safe_globals(
     torch.nn.modules.dropout.Dropout,
     FCNResNet101, FCN, FCNHead, IntermediateLayerGetter, Bottleneck # for FCN
 ])
-
+from torchinfo import summary
 
 # added for using paths for weights and datasets
 '''
@@ -112,9 +112,6 @@ class Trainer(object):
             print('Successfully loaded weights.\n')
 
         # freeze layers
-        """first let's print the model and see its naming scheme."""
-        # Try to get torchinfo, install it if it doesn't work
-        from torchinfo import summary
         if self.args.freeze:
             if self.args.model == 'deeplabv3+' or self.args.model=='deeplabv3plus':
                 assert self.args.model=='deeplabv3+', "model name should be either deeplabv3+ or fcn"
