@@ -316,7 +316,7 @@ class Trainer(object):
             self.saver.best_model = self.best_model
             self.saver.save_checkpoint({
                 'epoch': epoch + 1,
-                'state_dict': self.model.modules.state_dict(), # for training with parallel GPU's
+                'state_dict': self.model.module.state_dict(), # for training with parallel GPU's
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
             }, is_best)
