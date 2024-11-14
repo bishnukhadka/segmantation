@@ -110,9 +110,46 @@ class Trainer(object):
                 print(f"Error occurred while loading weights: {e}")
                 raise AssertionError("Weights loading failed!") 
             print('Successfully loaded weights.\n')
+
+        # freeze layers
+        """first let's print the model and see its naming scheme."""
+        # Try to get torchinfo, install it if it doesn't work
+        from torchinfo import summary
+        if self.args.freeze:
+            if self.args.model == 'deeplabv3+' or self.args.model=='deeplabv3plus':
+                assert self.args.model=='deeplabv3+', "model name should be either deeplabv3+ or fcn"
+                if self.args.freeze=='encoder':
+                    for param in model.backbone.parameters():
+                        param.requires_grad=False
+
+                    for param in model.aspp.parameters():
+                        param.requires_grad=False
+                else:
+                    for param in model.decoder.parameters():
+                        param.requires_grad=False
+            elif self.args.model=='fcn':
+                assert self.args.model=='fcn', "model name should be either deeplabv3+ or fcn"
+                if self.args.freeze=='encoder':
+                    for param in model.model.backbone.parameters():
+                        param.requires_grad=False
+                else:
+                    for param in model.model.classifier.parameters():
+                        param.requires_grad=False
+                    for param in model.model.aux_classifier.parameters():
+                        param.requires_grad=False
+
+        print(summary(
+            model=model, 
+            input_size=(args.batch_size, 3, args.img, args.img), # make sure this is "input_size", not "input_shape"
+            # col_names=["input_size"], # uncomment for smaller output
+            col_names=["input_size", "output_size", "num_params", "trainable"],
+            col_width=20,
+            row_settings=["var_names"]
+        ))
+        exit()
         
         # Define Optimizer
-        optimizer = torch.optim.SGD(train_params, 
+        optimizer = torch.optim.SGD(train_params,
                                     momentum=args.momentum,
                                     weight_decay=args.weight_decay, 
                                     nesterov=args.nesterov)
@@ -350,7 +387,7 @@ class Trainer(object):
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
     parser.add_argument('--model', type=str, default='deeplabv3+',
-                        choices=['deeplabv3+','fcn'])
+                        choices=['deeplabv3+','deeplabv3plus','fcn'])
     parser.add_argument('--backbone', type=str, default='resnet',
                         choices=['resnet', 'xception', 'drn', 'mobilenet'],
                         help='backbone name (default: resnet)')
@@ -366,7 +403,7 @@ def main():
                         help='whether to use SBD dataset (default: True)')
     parser.add_argument('--workers', type=int, default=4,
                         metavar='N', help='dataloader threads')
-    parser.add_argument('--img', type=int, default=256,
+    parser.add_argument('--img', '--imgz', '--img-size', type=int, default=256,
                         help='base image size')
     parser.add_argument('--crop_size', type=int, default=256,
                         help='crop image size')
@@ -423,6 +460,8 @@ def main():
                         help='finetuning on a different dataset')
     parser.add_argument('--weights', type=str, default=None,
                         help='path to the model weights.pt')
+    parser.add_argument('--freeze', type=str, default='None', choices=['encoder', 'decoder'],
+    help='choose encode or decoder')
     # evaluation option
     parser.add_argument('--eval-interval', type=int, default=1,
                         help='evaluuation interval (default: 1)')
