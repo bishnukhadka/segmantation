@@ -6,7 +6,7 @@ class FCNResNet101(torch.nn.Module):
         super(FCNResNet101, self).__init__()
         if pretrained:
             # Load the pre-trained fcn_resnet101 model
-            self.model = fcn_resnet101(pretrained=True)
+            self.model = fcn_resnet101(pretrained=True) # will give imagenet trained backbone
         else:
             # Load model with no weights
             self.model = fcn_resnet101(weights=None, weights_backbone=None)

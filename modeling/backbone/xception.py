@@ -96,7 +96,7 @@ class AlignedXception(nn.Module):
     Modified Alighed Xception
     """
     def __init__(self, output_stride, BatchNorm,
-                 pretrained=True):
+                pretrained=True):
         super(AlignedXception, self).__init__()
 
         if output_stride == 16:

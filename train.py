@@ -80,12 +80,21 @@ class Trainer(object):
 
         if args.model=='deeplabv3+':
             # Define network
-            model = DeepLab(num_classes=self.nclass,
+            if args.pre_trained:
+                model = DeepLab(num_classes=self.nclass,
+                            backbone=args.backbone,
+                            output_stride=args.out_stride,
+                            sync_bn=args.sync_bn,
+                            freeze_bn=args.freeze_bn,
+                            pretrained=True)
+            else:
+                model = DeepLab(num_classes=self.nclass,
                             backbone=args.backbone,
                             output_stride=args.out_stride,
                             sync_bn=args.sync_bn,
                             freeze_bn=args.freeze_bn)
-
+            
+            
             train_params = [{'params': model.get_1x_lr_params(), 
                             'lr': args.lr},
                             {'params': model.get_10x_lr_params(),
@@ -93,7 +102,10 @@ class Trainer(object):
         else: 
             # assert that the backbone is resnet
             assert args.backbone=='resnet', "FCN only supports resnet backbone(currently using ResNet101)"
-            model = FCNResNet101(self.nclass, 512)
+            if args.pre_trained:
+                model = FCNResNet101(self.nclass, 512, pretrained=True)
+            else:
+                model = FCNResNet101(self.nclass, 512)
 
             train_params = [{'params': model.parameters(), 
                         'lr': args.lr}]
@@ -453,9 +465,7 @@ def main():
     parser.add_argument('--checkname', type=str, default=None,
                         help='set the checkpoint name')
     # finetuning pre-trained models
-    """
-    Don't know what other reason was this used for so not using this right now
-    """
+    parser.add_argument('--pre-trained', '--pretrained', '--pre_trained', action='store_true', default=False)
     parser.add_argument('--ft', action='store_true', default=False,
                         help='finetuning on a different dataset')
     parser.add_argument('--weights', type=str, default=None,
@@ -527,7 +537,6 @@ def main():
             'nih_xrays_dataset':0.01,
         }
         args.lr = lrs[args.dataset.lower()] / (4 * len(args.gpu_ids)) * args.batch_size
-
 
     if args.checkname is None:
         args.checkname = 'deeplab-'+str(args.backbone)

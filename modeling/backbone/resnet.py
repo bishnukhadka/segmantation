@@ -150,7 +150,12 @@ def ResNet101(output_stride, BatchNorm, pretrained=True):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(Bottleneck, [3, 4, 23, 3], output_stride, BatchNorm, pretrained=pretrained)
+    model = ResNet(
+                Bottleneck, 
+                [3, 4, 23, 3], 
+                output_stride, 
+                BatchNorm, 
+                pretrained=pretrained)
     return model
 
 if __name__ == "__main__":
