@@ -1,4 +1,4 @@
-from dataloaders.datasets import bishnumati
+from dataloaders.datasets import bishnumati, bagmati
 from torch.utils.data import DataLoader
 
 def make_data_loader(args, **kwargs):
@@ -22,6 +22,19 @@ def make_data_loader(args, **kwargs):
         train_set = bishnumati.BishnumatiSegmentation(args, split='train')
         val_set = bishnumati.BishnumatiSegmentation(args, split='val')
         test_set = bishnumati.BishnumatiSegmentation(args, split='test')
+        num_class = train_set.NUM_CLASSES
+        train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs,drop_last=True)
+        val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, **kwargs,
+        )
+        test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, **kwargs,drop_last=True)
+
+        return train_loader, val_loader, test_loader, num_class
+    
+    # added by bishnu
+    if args.dataset == 'bagmati':
+        train_set = bagmati.BagmatiSegmentation(args, split='train')
+        val_set = bagmati.BagmatiSegmentation(args, split='val')
+        test_set = bagmati.BagmatiSegmentation(args, split='test')
         num_class = train_set.NUM_CLASSES
         train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs,drop_last=True)
         val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, **kwargs,

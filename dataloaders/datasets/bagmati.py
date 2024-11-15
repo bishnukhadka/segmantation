@@ -7,16 +7,16 @@ from mypath import Path
 from torchvision import transforms
 from dataloaders import custom_transforms as tr
 
-class BishnumatiSegmentation(Dataset):
+class BagmatiSegmentation(Dataset):
     NUM_CLASSES = 2
 
     def __init__(self,
                 args,
-                base_dir=Path.db_root_dir('bishnumati'),
+                base_dir=Path.db_root_dir('bagmati'),
                 split='train',
                 ):
         """
-        :param base_dir: path to bishnumati dataset directory
+        :param base_dir: path to bagmati dataset directory
         :param split: train/val
         :param transform: transform to apply
         """
@@ -57,11 +57,13 @@ class BishnumatiSegmentation(Dataset):
 
                 self.images.append(_image)
                 self.categories.append(_cat)
+            
         assert (len(self.images) == len(self.categories))
 
         # Display stats
         print('Number of images in {}: {:d}'.format(split, len(self.images)))
-
+        assert len(self.images)>self.args.batch_size, "Batch size should be less than number of test/val data pairs"    
+        
     def __len__(self):
         return len(self.images)
 
@@ -119,7 +121,7 @@ class BishnumatiSegmentation(Dataset):
         return composed_transforms(sample)
 
     def __str__(self):
-        return 'Bishnumati(split=' + str(self.split) + ')'
+        return 'Bagmati(split=' + str(self.split) + ')'
 
 
 if __name__ == '__main__':
@@ -134,7 +136,7 @@ if __name__ == '__main__':
     args.base_size = 513
     args.crop_size = 513
 
-    voc_train = BishnumatiSegmentation(args, split='train')
+    voc_train = BagmatiSegmentation(args, split='train')
 
     dataloader = DataLoader(voc_train, batch_size=5, shuffle=True, num_workers=0)
 
@@ -143,7 +145,7 @@ if __name__ == '__main__':
             img = sample['image'].numpy()
             gt = sample['label'].numpy()
             tmp = np.array(gt[jj]).astype(np.uint8)
-            segmap = decode_segmap(tmp, dataset='bishnumati')
+            segmap = decode_segmap(tmp, dataset='bagmati')
             img_tmp = np.transpose(img[jj], axes=[1, 2, 0])
             img_tmp *= (0.229, 0.224, 0.225)
             img_tmp += (0.485, 0.456, 0.406)

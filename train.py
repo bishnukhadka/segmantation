@@ -75,6 +75,9 @@ class Trainer(object):
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
+        # make sure batch_size < size of test_loader 
+        
+
         if args.model=='deeplabv3+':
             # Define network
             model = DeepLab(num_classes=self.nclass,
@@ -332,16 +335,15 @@ class Trainer(object):
         else: 
             model = FCNResNet101(self.nclass, 512)
 
-        if not model_path: #if weights is given
-            # print(self.saver.best_model_path)
+        if not model_path: #if weights is not given
             model_path = PathlibPath(self.saver.best_model_path)
-            model = torch.load(self.saver.best_model_path, weights_only=True)
+            loaded_model = torch.load(self.saver.best_model_path, weights_only=True)
             if torch.cuda.device_count() > 1:
-                model = torch.nn.DataParallel(model)
+                loaded_model = torch.nn.DataParallel(model)
         else:
             # model.load_state_dict(torch.load(model_path, weights_only=True))
-            torch.load(model_path, weights_only=True)
-        model.eval()
+            loaded_model = torch.load(model_path, weights_only=True)
+        loaded_model.eval()
         evaluator = Evaluator(self.nclass)
         evaluator.reset()
         tbar = tqdm(self.test_loader, desc='\r')
@@ -351,7 +353,7 @@ class Trainer(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
-                output = model(image)
+                output = loaded_model(image)
                 if self.args.model=='fcn':
                     output=output['out']
             loss = self.criterion(output, target)
@@ -363,6 +365,7 @@ class Trainer(object):
             # Add batch sample into evaluator
             evaluator.add_batch(target, pred)
 
+        assert output != None, 'Error occured output is none'
         # Fast test during the training 
         '''
         The above comment is here since, i copied from evaluation, 

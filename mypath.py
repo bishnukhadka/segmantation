@@ -7,8 +7,8 @@ class Path(object):
         elif dataset == "bishnumati":
             return "C:/Users/aires/Documents/Projects/Datasets/bishnumati_dataset_IS"
         
-        elif dataset == "bishnumati":
-            return "C:/Users/aires/Documents/Projects/Datasets/bagmati_dataset_IS"
+        elif dataset == "bagmati":
+            return "C:/Users/aires/Documents/Projects/Datasets/Bagmati_dataset_IS"
 
         elif dataset == 'sbd':
             return '/path/to/datasets/benchmark_RELEASE/'  # folder that contains dataset/.

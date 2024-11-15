@@ -3,6 +3,7 @@ import glob
 import os
 import pandas as pd
 import shutil
+from pathlib import Path
     
 '''
 In this dataset is split into train-val and test 
@@ -14,7 +15,7 @@ with seed of 100
 random.seed(100)
 
 # list the total image 
-paths =r'E:\Data\Dataset\Processed_image\lungs-segmentation-dataset\darwinlungs\images'+'\*'
+paths =r'C:\Users\aires\Documents\Projects\Datasets\Bagmati_dataset_IS\images'+r'\*'
 list_name_images =[]
 for file in glob.iglob(paths, recursive=True):
     file_name = os.path.basename(file)
@@ -45,9 +46,17 @@ for i in range(len(new_data)):
 
 # WRITE THE FILE IN THE FOLDER
 
-# train 
-text_file1 = open("train.txt", "w")
+dataset_path = Path(str(paths).split('\\images')[0])
 
+# # save path for the text file
+train_path = dataset_path / "split_Dataset" / "train.txt"
+val_path = dataset_path / "split_Dataset" / "val.txt"
+test_path = dataset_path / "split_Dataset" / "test.txt"
+
+# TODO: code to make the split_Dataset folder if not presesnt 
+
+# train
+text_file1 = open(train_path, "w")
 for i in range(len(random_train)):
     text_file1.write(random_train[i])
     text_file1.write('\n')
@@ -56,7 +65,7 @@ text_file1.close()
 
 
 # Validation
-text_file2 = open("val.txt", "w")
+text_file2 = open(val_path, "w")
 for i in range(len(random_val)):
     text_file2.write(random_val[i])
     text_file2.write('\n')
@@ -64,7 +73,7 @@ for i in range(len(random_val)):
 text_file2.close()
 
 # test
-text_file3 = open("test.txt", "w")
+text_file3 = open(test_path, "w")
 for i in range(len(random_test)): 
     text_file3.write(random_test[i])
     text_file3.write('\n')
