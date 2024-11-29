@@ -477,6 +477,8 @@ def main():
                         help='evaluuation interval (default: 1)')
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='skip validation during training')
+    parser.add_argument('--no-test', action='store_true', default=False,
+                        help='skip testing on test_set after training')
     # experiment detail
     parser.add_argument("--project", default='train',help="save to project/experiment_{}")
 
@@ -510,7 +512,7 @@ def main():
             'japan_xrays_dataset':100,
             'montgomery_xrays_dataset':100,
             'nih_xrays_dataset':100,
-
+            'coco': 30
         }
         args.epochs = epoches[args.dataset.lower()]
 
@@ -552,9 +554,15 @@ def main():
         if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
     
-    # test-set evaluation
-    print('\n\nTesting:')
-    trainer.test()
+    # code to save the last model
+    filename='last.pt'
+    filename = os.path.join(trainer.saver.experiment_dir, filename)
+    torch.save(trainer.model.module if isinstance(trainer.model, torch.nn.DataParallel) else trainer.model, filename)
+    
+    if not args.no_test:
+        # test-set evaluation
+        print('\n\nTesting:')
+        trainer.test()
 
     trainer.writer.close()
 

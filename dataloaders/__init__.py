@@ -1,4 +1,4 @@
-from dataloaders.datasets import bishnumati, bagmati
+from dataloaders.datasets import bishnumati, bagmati, coco
 from torch.utils.data import DataLoader
 
 def make_data_loader(args, **kwargs):
@@ -24,8 +24,7 @@ def make_data_loader(args, **kwargs):
         test_set = bishnumati.BishnumatiSegmentation(args, split='test')
         num_class = train_set.NUM_CLASSES
         train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs,drop_last=True)
-        val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, **kwargs,
-        )
+        val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, **kwargs,)
         test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, **kwargs,drop_last=True)
 
         return train_loader, val_loader, test_loader, num_class
@@ -171,14 +170,14 @@ def make_data_loader(args, **kwargs):
 
 #         return test_loader, num_class
   
-    # elif args.dataset == 'coco':
-    #     train_set = coco.COCOSegmentation(args, split='train')
-    #     val_set = coco.COCOSegmentation(args, split='val')
-    #     num_class = train_set.NUM_CLASSES
-    #     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs)
-    #     val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, **kwargs)
-    #     test_loader = None
-    #     return train_loader, val_loader, test_loader, num_class
+    elif args.dataset == 'coco':
+        train_set = coco.COCOSegmentation(args, split='train')
+        val_set = coco.COCOSegmentation(args, split='val')
+        num_class = train_set.NUM_CLASSES
+        train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs)
+        val_loader = None
+        test_loader = None
+        return train_loader, val_loader, test_loader, num_class
 
     else:
         raise NotImplementedError
