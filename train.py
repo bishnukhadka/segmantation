@@ -26,9 +26,13 @@ from torch.nn.modules.container import Sequential
 from modeling.aspp import ASPP, _ASPPModule
 from modeling.decoder import Decoder
 from modeling.fcn import *
+from modeling.deeplabv3 import *
 from torchvision.models.segmentation.fcn import FCN, FCNHead
+from torchvision.models.segmentation.deeplabv3 import DeepLabV3, DeepLabHead, ASPPConv, ASPPPooling
 from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.resnet import Bottleneck
+from torchvision.models.segmentation.deeplabv3 import ASPP as DeepLabv3ASPP
+from torch.nn.modules.container import ModuleList 
 
 # Allowlist the DeepLab class for safe loading
 torch.serialization.add_safe_globals(
@@ -44,7 +48,8 @@ torch.serialization.add_safe_globals(
     ASPP, _ASPPModule,
     Decoder,
     torch.nn.modules.dropout.Dropout,
-    FCNResNet101, FCN, FCNHead, IntermediateLayerGetter, Bottleneck # for FCN
+    FCNResNet101, FCN, FCNHead, IntermediateLayerGetter, Bottleneck, # for FCN
+    DeepLabV3, DeepLabHead, DeepLabV3Resnet101, DeepLabv3ASPP, ModuleList, ASPPConv, ASPPPooling
 ])
 from torchinfo import summary
 
@@ -99,13 +104,23 @@ class Trainer(object):
                             'lr': args.lr},
                             {'params': model.get_10x_lr_params(),
                             'lr': args.lr * 10}]   
-        else: 
+        elif args.model=='fcn': 
             # assert that the backbone is resnet
             assert args.backbone=='resnet', "FCN only supports resnet backbone(currently using ResNet101)"
             if args.pre_trained:
                 model = FCNResNet101(self.nclass, 512, pretrained=True)
             else:
                 model = FCNResNet101(self.nclass, 512)
+
+            train_params = [{'params': model.parameters(), 
+                        'lr': args.lr}]
+        elif args.model =='deeplabv3':
+            # assert that the backbone is resnet
+            assert args.backbone=='resnet', "deeplabv3 only supports resnet backbone(currently using ResNet101)"
+            if args.pre_trained:
+                model = DeepLabV3Resnet101(self.nclass, 256, pretrained=True)
+            else:
+                model = DeepLabV3Resnet101(self.nclass, 256)
 
             train_params = [{'params': model.parameters(), 
                         'lr': args.lr}]
@@ -129,7 +144,7 @@ class Trainer(object):
         # freeze layers
         if self.args.freeze:
             if self.args.model == 'deeplabv3+' or self.args.model=='deeplabv3plus':
-                assert self.args.model=='deeplabv3+', "model name should be either deeplabv3+ or fcn"
+                assert self.args.model=='deeplabv3+', "model name should be either deeplabv3, deeplabv3+ or fcn"
                 if self.args.freeze=='encoder':
                     for param in model.backbone.parameters():
                         param.requires_grad=False
@@ -140,7 +155,17 @@ class Trainer(object):
                     for param in model.decoder.parameters():
                         param.requires_grad=False
             elif self.args.model=='fcn':
-                assert self.args.model=='fcn', "model name should be either deeplabv3+ or fcn"
+                assert self.args.model=='fcn', "model name should be either deeplabv3, deeplabv3+ or fcn"
+                if self.args.freeze=='encoder':
+                    for param in model.model.backbone.parameters():
+                        param.requires_grad=False
+                else:
+                    for param in model.model.classifier.parameters():
+                        param.requires_grad=False
+                    for param in model.model.aux_classifier.parameters():
+                        param.requires_grad=False
+            elif self.args.model=='deeplabv3':
+                assert self.args.model=='deeplabv3', "model name should be either deeplabv3, deeplabv3+ or fcn"
                 if self.args.freeze=='encoder':
                     for param in model.model.backbone.parameters():
                         param.requires_grad=False
@@ -251,6 +276,8 @@ class Trainer(object):
             """
             if self.args.model=='fcn':
                 output = output['out']
+            if self.args.model=='deeplabv3':
+                output = output['out']
 
             loss = self.criterion(output, target)
             loss.backward()
@@ -263,9 +290,14 @@ class Trainer(object):
             TODO: need to find the problem for some value of batchsize
             """
             # Show 10 * 3 inference results each epoch
-            # if i % (num_img_tr // 10) == 0:
-            #     global_step = i + num_img_tr * epoch
-            #     self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
+            if i % (num_img_tr // 10) == 0:
+                global_step = i + num_img_tr * epoch
+                self.summary.visualize_image(self.writer, 
+                                            self.args.dataset, 
+                                            image, 
+                                            target, 
+                                            output, 
+                                            global_step)
 
             
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
@@ -297,6 +329,8 @@ class Trainer(object):
             with torch.no_grad():
                 output = self.model(image)
                 if self.args.model=='fcn':
+                    output=output['out']
+                if self.args.model=='deeplabv3':
                     output=output['out']
             loss = self.criterion(output, target)
             test_loss += loss.item()
@@ -344,9 +378,11 @@ class Trainer(object):
                         output_stride=self.args.out_stride,
                         sync_bn=self.args.sync_bn,
                         freeze_bn=self.args.freeze_bn) # freezes the BatchNorm layers, meaning they won’t update their running mean and variance during evaluation.
+        elif self.args.model=='deeplabv3':
+            model= DeepLabV3Resnet101(self.nclass, 256)
         else: 
             model = FCNResNet101(self.nclass, 512)
-
+        
         if not model_path: #if weights is not given
             model_path = PathlibPath(self.saver.best_model_path)
             loaded_model = torch.load(self.saver.best_model_path, weights_only=True)
@@ -367,6 +403,8 @@ class Trainer(object):
             with torch.no_grad():
                 output = loaded_model(image)
                 if self.args.model=='fcn':
+                    output=output['out']
+                if self.args.model =='deeplabv3':
                     output=output['out']
             loss = self.criterion(output, target)
             test_loss += loss.item()
@@ -399,7 +437,7 @@ class Trainer(object):
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
     parser.add_argument('--model', type=str, default='deeplabv3+',
-                        choices=['deeplabv3+','deeplabv3plus','fcn'])
+                        choices=['deeplabv3','deeplabv3+','deeplabv3plus','fcn'])
     parser.add_argument('--backbone', type=str, default='resnet',
                         choices=['resnet', 'xception', 'drn', 'mobilenet'],
                         help='backbone name (default: resnet)')
@@ -471,7 +509,7 @@ def main():
     parser.add_argument('--weights', type=str, default=None,
                         help='path to the model weights.pt')
     parser.add_argument('--freeze', type=str, default=None, choices=['encoder', 'decoder'],
-    help='choose encode or decoder')
+    help='choose encoder or decoder')
     # evaluation option
     parser.add_argument('--eval-interval', type=int, default=1,
                         help='evaluuation interval (default: 1)')
