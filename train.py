@@ -99,7 +99,6 @@ class Trainer(object):
                             sync_bn=args.sync_bn,
                             freeze_bn=args.freeze_bn)
             
-            
             train_params = [{'params': model.get_1x_lr_params(), 
                             'lr': args.lr},
                             {'params': model.get_10x_lr_params(),

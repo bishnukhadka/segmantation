@@ -58,7 +58,6 @@ def save_output_images(LOAD_PATH_MODEL, model, test_loader, SAVE_PATH_MODEL_OUTP
             name ,_,_ = image_names[0].partition('.')
 
 # UPDATED BY UKESH
-
             if dataset_name == 'japan_xrays_dataset' or dataset_name == 'montgomery_xrays_dataset': 
                 img = cv.imread(f"{gt_paths}\\masks\\{name}.png")
             else:
