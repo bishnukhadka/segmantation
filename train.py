@@ -15,6 +15,7 @@ from util.saver import Saver
 from util.summaries import TensorboardSummary
 from util.metrics import Evaluator
 from pathlib import Path as PathlibPath
+import time
 
 # added GLOBAL for best.pt model loading for testing
 from modeling.backbone import resnet, xception, drn, mobilenet
@@ -32,7 +33,7 @@ from torchvision.models.segmentation.deeplabv3 import DeepLabV3, DeepLabHead, AS
 from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.resnet import Bottleneck
 from torchvision.models.segmentation.deeplabv3 import ASPP as DeepLabv3ASPP
-from torch.nn.modules.container import ModuleList 
+from torch.nn.modules.container import ModuleList
 
 # Allowlist the DeepLab class for safe loading
 torch.serialization.add_safe_globals(
@@ -64,24 +65,37 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = PathlibPath(os.path.relpath(ROOT, PathlibPath.cwd()))  # relative
 
+def seconds_to_hms(seconds):
+    """
+    Converts seconds to hours, minutes, and seconds.
+    Args:
+        seconds: The number of seconds to convert.
+    Returns:
+        A tuple containing hours, minutes, and seconds.
+    """
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    return hours, minutes, seconds     
+
 
 class Trainer(object):
     def __init__(self, args):
         self.args = args
-
         # Define Saver
         self.saver = Saver(args)
         self.saver.save_experiment_config()
         # Define Tensorboard Summary
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
-        
+        self.experiment_dir = self.saver.get_experiment_dir()
+        # Defining current_training_time_elasped as null 
+        self.current_training_time_elasped = None 
         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
         # make sure batch_size < size of test_loader 
-        
 
         if args.model=='deeplabv3+':
             # Define network
@@ -102,7 +116,7 @@ class Trainer(object):
             train_params = [{'params': model.get_1x_lr_params(), 
                             'lr': args.lr},
                             {'params': model.get_10x_lr_params(),
-                            'lr': args.lr * 10}]   
+                            'lr': args.lr * 10}]
         elif args.model=='fcn': 
             # assert that the backbone is resnet
             assert args.backbone=='resnet', "FCN only supports resnet backbone(currently using ResNet101)"
@@ -232,6 +246,7 @@ class Trainer(object):
                 raise RuntimeError("=> no checkpoint found at '{}'" .format(args.resume))
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
+            self.args.training_start_time = time.time() - checkpoint['time_trained']
             if args.cuda:
                 self.model.module.load_state_dict(checkpoint['state_dict'])
             else:
@@ -268,8 +283,7 @@ class Trainer(object):
 
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            output = self.model(image)
-            
+            output = self.model(image)            
             """
             Output of the FCN comes out as 
             """
@@ -283,7 +297,9 @@ class Trainer(object):
             self.optimizer.step()
             train_loss += loss.item()
             tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-            self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
+            self.writer.add_scalar('train/total_loss_iter', 
+                                    loss.item(), 
+                                    i + num_img_tr * epoch)
             
             """
             TODO: need to find the problem for some value of batchsize
@@ -311,10 +327,11 @@ class Trainer(object):
                 'state_dict': self.model.module.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
+                'training_start_time' : self.args.training_start_time,
+                'checkpoint_save_time' : time.time(),
+                'time_trained' : time.time()- self.args.training_start_time
             }, is_best)
-
         return train_loss
-
             
     def validation(self, epoch):
         self.model.eval()
@@ -344,16 +361,25 @@ class Trainer(object):
         Acc = self.evaluator.Pixel_Accuracy()
         Acc_class = self.evaluator.Pixel_Accuracy_Class()
         mIoU = self.evaluator.Mean_Intersection_over_Union()
+        d_score = self.evaluator.get_dice_score()
+        precision, recall = self.evaluator.get_precision_and_recall()
         FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
         self.writer.add_scalar('val/mIoU', mIoU, epoch)
         self.writer.add_scalar('val/Acc', Acc, epoch)
         self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
         self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+        self.writer.add_scalar('val/precision', precision)
+        self.writer.add_scalar('val/recall', recall)
+        self.writer.add_scalar('val/dice_score', d_score)
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
         print('Loss: %.3f' % test_loss)
+        print(f'mIoU: {mIoU:.4f}')
+        print(f'Dice Score: {d_score:.4f}')
+        print(f'Precision: {precision:.4f}')
+        print(f'Recall: {recall:.4f}')
 
         new_pred = mIoU
         if new_pred > self.best_pred:
@@ -367,7 +393,19 @@ class Trainer(object):
                 'state_dict': self.model.module.state_dict(), # for training with parallel GPU's
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
+                'training_start_time' : self.args.training_start_time,
+                'checkpoint_save_time' : time.time(),
+                'time_trained' : time.time()-self.args.training_start_time
             }, is_best)
+
+        print(f'Evaluation metrics saved at: {self.experiment_dir}/eval.txt')
+        if not os.path.exists(self.experiment_dir):
+            os.makedirs(self.experiment_dir)
+        
+        file_path = os.path.join(self.experiment_dir, "eval.txt")
+        with open(file_path, 'a+') as file:
+            file.write(f"Epochs: {epoch} \t Loss: {test_loss} \t mIoU: {mIoU:.4f} \t Dice Score: {d_score:.4f} \t Precision: {precision:.4f} \t Recall: {recall:.4f} \t Training time elasped:{time.time() - self.args.training_start_time}")
+            file.write("\n")
     
     def test(self, model_path=None):
         if self.args.model=='deeplabv3+':
@@ -409,6 +447,8 @@ class Trainer(object):
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))   
             pred = output.data.cpu().numpy()
+            # # for dice_score
+            # d_score = dice_score(y_pred=output.data.cpu(), y_true=target.cpu())
             target = target.cpu().numpy()
             pred = np.argmax(pred, axis=1)
             # Add batch sample into evaluator
@@ -416,22 +456,41 @@ class Trainer(object):
 
         assert output != None, 'Error occured output is none'
         # Fast test during the training 
-        '''
-        The above comment is here since, i copied from evaluation, 
-        don't know why this is fast. 
-        '''
         Acc = evaluator.Pixel_Accuracy()
         Acc_class = evaluator.Pixel_Accuracy_Class()
         mIoU = evaluator.Mean_Intersection_over_Union()
         FWIoU = evaluator.Frequency_Weighted_Intersection_over_Union()
+        d_score = evaluator.get_dice_score()
+        precision, recall = evaluator.get_precision_and_recall()
         self.writer.add_scalar('test/total_loss_epoch', test_loss)
         self.writer.add_scalar('test/mIoU', mIoU)
         self.writer.add_scalar('test/Acc', Acc)
         self.writer.add_scalar('test/Acc_class', Acc_class)
         self.writer.add_scalar('test/fwIoU', FWIoU)
+        self.writer.add_scalar('test/precision', precision)
+        self.writer.add_scalar('test/recall', recall)
+        self.writer.add_scalar('test/dice_score', d_score)
         print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
         print('Loss: %.3f' % test_loss)
+        print(f'mIoU: {mIoU:.4f}')
+        print(f'Dice Score: {d_score:.4f}')
+        print(f'Precision: {precision:.4f}')
+        print(f'Recall: {recall:.4f}')
 
+        print(f'Results saved at: {self.experiment_dir}/result.txt')
+        if not os.path.exists(self.experiment_dir):
+            os.makedirs(self.experiment_dir)
+        
+        file_path = os.path.join(self.experiment_dir, "result.txt")
+
+        with open(file_path, 'a+') as file:
+            file.write(f"Total epochs: {self.args.epochs}")
+            file.write("Loss:  %.3f" % test_loss)
+            file.write(f"mIoU: {mIoU:.4f}")
+            file.write(f"Dice Score: {d_score:.4f}")
+            file.write(f"Precision: {precision:.4f}")
+            file.write(f"Recall: {recall:.4f}")
+            
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
@@ -441,7 +500,7 @@ def main():
                         choices=['resnet', 'xception', 'drn', 'mobilenet'],
                         help='backbone name (default: resnet)')
     parser.add_argument('--out_stride', type=int, default=16,
-                        help='network output stride (default: 8)')
+                        help='network output stride (default: 16)')
     """
     TODO: dataset arg should input the dataset path, not be hard-coded to certain datasets.  
     """
@@ -548,8 +607,7 @@ def main():
             'china_xrays_dataset':100,
             'japan_xrays_dataset':100,
             'montgomery_xrays_dataset':100,
-            'nih_xrays_dataset':100,
-            'coco': 30
+            'nih_xrays_dataset':100
         }
         args.epochs = epoches[args.dataset.lower()]
 
@@ -581,15 +639,22 @@ def main():
         args.checkname = 'deeplab-'+str(args.backbone)
     print(args)
     torch.manual_seed(args.seed)
+    # start time to track the training time
+    start_time = time.time()
+    args.training_start_time = start_time    
     trainer = Trainer(args)
     print('Starting Epoch:', trainer.args.start_epoch)
     print('Total Epoches:', trainer.args.epochs)
+
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         print('\n\nTraining:')
         train_loss = trainer.training(epoch)
         print('Train Loss: %.3f' % train_loss)
         if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
+
+    # Calculate and display total training time
+    total_training_time = time.time() - start_time    
     
     # code to save the last model
     filename='last.pt'

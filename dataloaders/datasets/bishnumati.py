@@ -88,7 +88,6 @@ class BishnumatiSegmentation(Dataset):
         _image_id = self.im_ids[index]
         return _img, _target,_image_id
 
-
     def transform_tr(self, sample):
         composed_transforms = transforms.Compose([
             tr.RandomHorizontalFlip(),
@@ -160,5 +159,3 @@ if __name__ == '__main__':
             break
 
     plt.show(block=True)
-
-

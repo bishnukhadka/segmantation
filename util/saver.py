@@ -64,6 +64,9 @@ class Saver(object):
             else:
                 shutil.copyfile(filename, os.path.join(self.directory, 'model_best.pth.tar'))
 
+    def get_experiment_dir(self):
+        return self.experiment_dir
+
     def save_experiment_config(self):
         logfile = os.path.join(self.experiment_dir, 'parameters.txt')
         log_file = open(logfile, 'w')
@@ -77,6 +80,7 @@ class Saver(object):
         p['epoch'] = self.args.epochs
         p['img'] = self.args.img
         p['crop_size'] = self.args.crop_size
+        p['training_start_time'] = self.args.training_start_time
 
         for key, val in p.items():
             log_file.write(key + ':' + str(val) + '\n')

@@ -4,10 +4,9 @@ class Path(object):
         if dataset == 'pascal':
             return 'E:/Data/pascal/'  # folder that contains VOCdevkit/.
         elif dataset == 'coco':
-            return 'C:/Users/aires/Downloads/mscoco/coco2017/mscoco_pascal_voc_v1'    
+            return r"C:\Users\aires\Downloads\mscoco\coco2017\mscoco_train2017_images_pascal_voc"    
         elif dataset == "bishnumati":
-            return "C:/Users/aires/Documents/Projects/Datasets/bishnumati_dataset_IS"
-        
+            return "C:/Users/aires/Documents/Projects/Datasets/bishnumati_dataset_IS"    
         elif dataset == "bagmati":
             return "C:/Users/aires/Documents/Projects/Datasets/Bagmati_dataset_IS"
 

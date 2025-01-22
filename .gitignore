@@ -111,3 +111,15 @@ train_voc.sh
 dataloaders/datasets/coco.py
 run/darwinlungs
 run/pascal
+
+# others
+Contour Plot 2x2.png
+Contour Plot.png
+Contour Plot.svg
+detailed_image.svg
+ipynb for testing.ipynb
+mscoco-segmentation.ipynb
+python
+resnet18
+resnet18.png
+segmentation-metrics.ipynb
