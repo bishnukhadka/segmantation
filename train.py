@@ -94,6 +94,10 @@ class Trainer(object):
         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
+        # for early-stopping
+        self.best_val_score = float('inf')
+        self.early_stopping_counter = 0
+        self.patience = args.patience
 
         # make sure batch_size < size of test_loader 
 
@@ -381,7 +385,24 @@ class Trainer(object):
         print(f'Precision: {precision:.4f}')
         print(f'Recall: {recall:.4f}')
 
-        new_pred = mIoU
+        # new_pred = mIoU
+        # if new_pred > self.best_pred:
+        #     print(f'Score improved: {self.best_pred} --> {new_pred}')
+        #     is_best = True
+        #     self.best_pred = new_pred
+        #     self.best_model = self.model
+        #     self.saver.best_model = self.best_model
+        #     self.saver.save_checkpoint({
+        #         'epoch': epoch + 1,
+        #         'state_dict': self.model.module.state_dict(), # for training with parallel GPU's
+        #         'optimizer': self.optimizer.state_dict(),
+        #         'best_pred': self.best_pred,
+        #         'training_start_time' : self.args.training_start_time,
+        #         'checkpoint_save_time' : time.time(),
+        #         'time_trained' : time.time()-self.args.training_start_time
+        #     }, is_best)
+
+        new_pred = mIoU 
         if new_pred > self.best_pred:
             print(f'Score improved: {self.best_pred} --> {new_pred}')
             is_best = True
@@ -390,13 +411,19 @@ class Trainer(object):
             self.saver.best_model = self.best_model
             self.saver.save_checkpoint({
                 'epoch': epoch + 1,
-                'state_dict': self.model.module.state_dict(), # for training with parallel GPU's
+                'state_dict': self.model.module.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
-                'training_start_time' : self.args.training_start_time,
-                'checkpoint_save_time' : time.time(),
-                'time_trained' : time.time()-self.args.training_start_time
+                'training_start_time': self.args.training_start_time,
+                'checkpoint_save_time': time.time(),
+                'time_trained': time.time() - self.args.training_start_time
             }, is_best)
+            
+            # Reset early stopping counter
+            self.early_stopping_counter = 0
+        else:
+            # Increment early stopping counter
+            self.early_stopping_counter += 1
 
         print(f'Evaluation metrics saved at: {self.experiment_dir}/eval.txt')
         if not os.path.exists(self.experiment_dir):
@@ -406,6 +433,11 @@ class Trainer(object):
         with open(file_path, 'a+') as file:
             file.write(f"Epochs: {epoch} \t Loss: {test_loss} \t mIoU: {mIoU:.4f} \t Dice Score: {d_score:.4f} \t Precision: {precision:.4f} \t Recall: {recall:.4f} \t Training time elasped:{time.time() - self.args.training_start_time}")
             file.write("\n")
+
+        # Check if we should stop training
+        if self.early_stopping_counter >= self.patience:
+            print(f'Early stopping triggered after {epoch + 1} epochs without improvement.')
+            return True  # Indicate that training should stop
     
     def test(self, model_path=None):
         if self.args.model=='deeplabv3+':
@@ -433,6 +465,7 @@ class Trainer(object):
         evaluator.reset()
         tbar = tqdm(self.test_loader, desc='\r')
         test_loss = 0.0
+        test_set_inference_start_time = time.time()
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
@@ -453,7 +486,7 @@ class Trainer(object):
             pred = np.argmax(pred, axis=1)
             # Add batch sample into evaluator
             evaluator.add_batch(target, pred)
-
+        test_set_inference_end_time = time.time()
         assert output != None, 'Error occured output is none'
         # Fast test during the training 
         Acc = evaluator.Pixel_Accuracy()
@@ -476,6 +509,7 @@ class Trainer(object):
         print(f'Dice Score: {d_score:.4f}')
         print(f'Precision: {precision:.4f}')
         print(f'Recall: {recall:.4f}')
+        print(f'Inference time: {test_set_inference_end_time-test_set_inference_start_time}')
 
         print(f'Results saved at: {self.experiment_dir}/result.txt')
         if not os.path.exists(self.experiment_dir):
@@ -577,6 +611,9 @@ def main():
                         help='skip testing on test_set after training')
     # experiment detail
     parser.add_argument("--project", default='train',help="save to project/experiment_{}")
+    # early-stopping
+    parser.add_argument('--patience', type=int, default=10,
+                    help='number of epochs to wait for improvement before stopping (default: 10)')
 
     args = parser.parse_args()
     print(args)
@@ -650,11 +687,10 @@ def main():
         print('\n\nTraining:')
         train_loss = trainer.training(epoch)
         print('Train Loss: %.3f' % train_loss)
-        if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
-            trainer.validation(epoch)
-
-    # Calculate and display total training time
-    total_training_time = time.time() - start_time    
+        # if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
+        #     trainer.validation(epoch)
+        if trainer.validation(epoch):  # Check for early stopping
+            break  # Exit the training loop if early stopping is triggered
     
     # code to save the last model
     filename='last.pt'
